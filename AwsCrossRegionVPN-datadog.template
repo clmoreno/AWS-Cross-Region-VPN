@@ -112,7 +112,6 @@
                     { "IpProtocol" : "-1", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "0.0.0.0/0" } 
                 ],
                 "SecurityGroupIngress" : [
-                    { "IpProtocol" : "tcp", "FromPort" : "22",  "ToPort" : "22",  "CidrIp" : "10.0.0.0/8" },
                     { "IpProtocol" : "-1", "FromPort" : "0",  "ToPort" : "65535",  "CidrIp" : {"Fn::Join" : [ "", [{ "Ref" : "Tunnel1PublicIP" }, "/32"]]} },
                     { "IpProtocol" : "-1", "FromPort" : "0",  "ToPort" : "65535",  "CidrIp" : {"Fn::Join" : [ "", [{ "Ref" : "Tunnel2PublicIP" }, "/32"]]} },
                     { "IpProtocol" : "-1", "FromPort" : "0",  "ToPort" : "65535",  "CidrIp" : { "Ref" : "LocalVpcCidr" }}
@@ -123,12 +122,6 @@
                 },{
                     "Key": "Name",
                     "Value": { "Ref": "AWS::StackName" }
-                },{
-                    "Key": "DataDogMonitor",
-                    "Value": "True"
-                },{
-                    "Key": "Project",
-                    "Value": "OPS"
                 }],
                 "VpcId" : { "Ref": "InstanceVpc" }
             }
@@ -258,14 +251,12 @@
                                     "    search_string: ['pluto']\n",
                                     "    tags:\n",
                                     "      - Environment:", { "Ref": "Environment" }, "\n",
-                                    "      - Project:OPS\n",
                                     "      - Role:VPN\n",
                                     "\n",
                                     "  - name: vpn-health-checker\n",
                                     "    pid_file: /var/run/vpn-health-checker.pid\n",
                                     "    tags:\n",
                                     "      - Environment:", { "Ref": "Environment" }, "\n",
-                                    "      - Project:OPS\n",
                                     "      - Role:VPN\n"
                                 ]]}
                             }
@@ -351,12 +342,6 @@
                 },{
                     "Key": "Name",
                     "Value": { "Ref": "AWS::StackName" }
-                },{
-                    "Key": "DataDogMonitor",
-                    "Value": "True"
-                },{
-                    "Key": "Project",
-                    "Value": "OPS"
                 }],
                 "UserData": { "Fn::Base64" : { "Fn::Join" : ["", [
                     "#!/bin/bash -xe\n",
