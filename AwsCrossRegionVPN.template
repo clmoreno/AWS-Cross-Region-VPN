@@ -173,7 +173,7 @@
                         },
                         "files": {
                             "/etc/init.d/vpn-health-checker": {
-                                "source": "https://raw.githubusercontent.com/clmoreno/AWS-Cross-Region-VPN/master/VpnHealthChecker",
+                                "source": "https://raw.githubusercontent.com/clmoreno/AWS-Cross-Region-VPN/master/vpn-health-checker",
                                 "mode": "000755",
                                 "owner": "root",
                                 "group": "root"
