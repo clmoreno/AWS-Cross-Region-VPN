@@ -1,0 +1,361 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Openswan HA vpn",
+    "Metadata": {
+        "AWS::CloudFormation::Interface" : {
+            "ParameterGroups" : [
+                {
+                    "Label" : { "default" : "Instance Configuration" },
+                    "Parameters" : [ "InstanceType", "InstanceKey", "InstanceVpc", "InstanceSubnet", "PublicIpAllocId", "InstancePublicIP" ]
+                },
+                {
+                    "Label" : { "default" : "Environment and Monitoring" },
+                    "Parameters" : [ "Environment", "SnsAlarmNotificationTopicARN" ]
+                },
+                {
+                    "Label" : { "default" : "AWS VPN Connection Details " },
+                    "Parameters" : [ "RemoteVpcCidr", "LocalVpcCidr", "Tunnel1PublicIP", "Tunnel1PreSharedKey", "Tunnel2PublicIP", "Tunnel2PreSharedKey", "VpnHealthCheckTargetIp1", "VpnHealthCheckTargetIp2" ]
+                }
+            ]
+        }
+    },
+    "Parameters": {
+        "InstanceType": {
+            "Description": "Instance type for the vpn instance",
+            "Type": "String",
+            "Default" : "c4.large", 
+            "AllowedValues": ["t2.small","t2.medium","t2.large","t2.xlarge","t2.2xlarge","m4.large","m4.xlarge","m4.2xlarge","m4.4xlarge","m4.10xlarge","m4.16xlarge","m3.medium","m3.large","m3.xlarge","m3.2xlarge","c4.large","c4.xlarge","c4.2xlarge","c4.4xlarge","c4.8xlarge","c3.large","c3.xlarge","c3.2xlarge","c3.4xlarge","c3.8xlarge","g2.2xlarge","g2.8xlarge","p2.xlarge","p2.8xlarge","p2.16xlarge","r4.large","r4.xlarge","r4.2xlarge","r4.4xlarge","r4.8xlarge","r4.16xlarge","r3.large","r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge","x1.16xlarge","x1.32xlarge","d2.xlarge","d2.2xlarge","d2.4xlarge","d2.8xlarge","i2.xlarge","i2.2xlarge","i2.4xlarge","i2.8xlarge"],
+            "ConstraintDescription" : "Must be a valid EC2 instance type."
+        },
+        "InstanceKey": {
+            "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+            "Type" : "AWS::EC2::KeyPair::KeyName"
+        },
+        "InstanceVpc": {
+            "Description" : "Vpc where the instance will be lounced, should be inside the vpc you want to connect",
+            "Type": "AWS::EC2::VPC::Id"
+        },
+        "InstanceSubnet" : {
+            "Description" : "Subnet where the instance will be lounched, should be inside the vpc you want to connect",
+            "Type": "AWS::EC2::Subnet::Id"
+        },
+        "PublicIpAllocId": {
+            "Description": "Allocation ID of the Elastic IP that will be used",
+            "Type": "String"
+        },
+        "InstancePublicIP": {
+            "Description": "The IP of the PublicIpAllocId you specified before",
+            "Type": "String"
+        },
+        "Environment" :{
+            "Type": "String",
+            "AllowedValues": ["Production", "Staging", "Test"],
+            "Default": "Production"
+        },
+        "RemoteVpcCidr": {
+            "Type": "String",
+            "Description": "The CIDR of the VPC you want to connect to"
+        },
+        "LocalVpcCidr": {
+            "Type": "String",
+            "Description": "The CIDR of the local VPC"
+        },
+        "Tunnel1PublicIP": {
+            "Type": "String",
+            "Description": "The public IP of the tunnel1 on the AWS VPN connection, usually noted as \"right\" in the tunnel1 configuration file provided by aws"
+        },
+        "Tunnel1PreSharedKey": {
+            "Type": "String",
+            "Description": "PreShared Key (PSK) for the Tunnel1"
+        },
+        "Tunnel2PublicIP": {
+            "Type": "String",
+            "Description": "The public IP of the tunnel2 on the AWS VPN connection, usually noted as \"right\" in the tunnel2 configuration file provided by aws"
+        },
+        "Tunnel2PreSharedKey": {
+            "Type": "String",
+            "Description": "PreShared Key (PSK) for the Tunnel2"
+        },
+        "VpnHealthCheckTargetIp1": {
+            "Type": "String",
+            "Description": "The target IP to use for determing tunnel health. This should be a stable private IP in the remote network over the tunnel that that is responsive to ping at all times."
+        },
+        "VpnHealthCheckTargetIp2": {
+            "Type": "String",
+            "Description": "The target IP to use for determing tunnel health. This should be a stable private IP in the remote network over the tunnel that that is responsive to ping at all times."
+        },
+        "SnsAlarmNotificationTopicARN" : {
+            "Type": "String",
+            "Description": "ARN of the SNS topic to publish alerts"
+        }
+    },
+    "Mappings": {
+        "Region" : {
+            "us-west-2" : {
+                "AmiID" : "ami-1e299d7e"
+            },
+            "us-east-1" : {
+                "AmiID" : "ami-9be6f38c"
+            }
+        }
+    },
+    "Resources": {
+        "VpnSecurityGroup": {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : { "Fn::Join" : [ "", ["Security group for the vpn ", {"Ref" : "AWS::StackName"  }]]},
+                "SecurityGroupEgress" : [
+                    { "IpProtocol" : "-1", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "0.0.0.0/0" } 
+                ],
+                "SecurityGroupIngress" : [
+                    { "IpProtocol" : "-1", "FromPort" : "0",  "ToPort" : "65535",  "CidrIp" : {"Fn::Join" : [ "", [{ "Ref" : "Tunnel1PublicIP" }, "/32"]]} },
+                    { "IpProtocol" : "-1", "FromPort" : "0",  "ToPort" : "65535",  "CidrIp" : {"Fn::Join" : [ "", [{ "Ref" : "Tunnel2PublicIP" }, "/32"]]} },
+                    { "IpProtocol" : "-1", "FromPort" : "0",  "ToPort" : "65535",  "CidrIp" : { "Ref" : "LocalVpcCidr" }}
+                ],
+                "Tags" :  [{
+                    "Key": "Environment",
+                    "Value": { "Ref": "Environment" }
+                },{
+                    "Key": "Name",
+                    "Value": { "Ref": "AWS::StackName" }
+                }],
+                "VpcId" : { "Ref": "InstanceVpc" }
+            }
+        },
+        "VpnInstanceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [ {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": [ "ec2.amazonaws.com" ]
+                        },
+                        "Action": [ "sts:AssumeRole" ]
+                    } ]
+                },
+                "Path": "/",
+                "Policies": [ {
+                    "PolicyName": "VpnCloudwatchLogs",
+                    "PolicyDocument": {
+                        "Statement": [ {
+                            "Effect": "Allow",
+                            "Action": [                                
+                                "cloudwatch:PutMetricData"
+                            ],
+                            "Resource": "*"
+                        } ]
+                    }
+                } ]
+            }
+        },
+        "VpnInstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [ {
+                    "Ref": "VpnInstanceRole"
+                } ]
+            }
+        },
+        "VpnInstance" : {
+            "Type" : "AWS::EC2::Instance",
+            "Metadata" : {
+                "AWS::CloudFormation::Init" : {
+                    "configSets" : {
+                        "VpnConfig" : [ "Install", "Configure" ]
+                    },
+                    "Install": {
+                        "packages" : {
+                            "yum": {
+                                "openswan": []
+                            }
+                        },
+                        "files": {
+                            "/etc/init.d/vpn-health-checker": {
+                                "source": "https://raw.githubusercontent.com/clmoreno/AWS-Cross-Region-VPN/master/VpnHealthChecker",
+                                "mode": "000755",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        }
+                    },
+                    "Configure": {
+                        "files": {
+                            "/etc/ipsec.d/aws.secrets": {
+                                "content" : { "Fn::Join" : ["", [
+                                    { "Ref": "InstancePublicIP" }, " ", { "Ref": "Tunnel1PublicIP" }, ": PSK \"", { "Ref": "Tunnel1PreSharedKey" }, "\"\n",
+                                    { "Ref": "InstancePublicIP" }, " ", { "Ref": "Tunnel2PublicIP" }, ": PSK \"", { "Ref": "Tunnel2PreSharedKey" }, "\"\n"
+                                ]]}
+                            },
+                            "/etc/ipsec.d/aws.conf": {
+                                "content" : { "Fn::Join" : ["", [
+                                    "conn TunnelA\n",
+                                    "	authby=secret\n",
+                                    "	auto=start\n",
+                                    "	left=%defaultroute\n",
+                                    "	leftid=", { "Ref": "InstancePublicIP" }, "\n",
+                                    "	right=", { "Ref": "Tunnel1PublicIP" }, "\n",
+                                    "	type=tunnel\n",
+                                    "	ikelifetime=8h\n",
+                                    "	keylife=1h\n",
+                                    "	phase2alg=aes128-sha1;modp1024\n",
+                                    "	ike=aes128-sha1;modp1024\n",
+                                    "	auth=esp\n",
+                                    "	keyingtries=%forever\n",
+                                    "	keyexchange=ike\n",
+                                    "	leftsubnet=0.0.0.0/0\n",
+                                    "	rightsubnet=", { "Ref": "RemoteVpcCidr" }, "\n",
+                                    "	dpddelay=10\n",
+                                    "	dpdtimeout=30\n",
+                                    "	dpdaction=restart_by_peer\n",
+                                    "\n",
+                                    "conn TunnelB\n",
+                                    "	authby=secret\n",
+                                    "	auto=start\n",
+                                    "	left=%defaultroute\n",
+                                    "	leftid=", { "Ref": "InstancePublicIP" }, "\n",
+                                    "	right=", { "Ref": "Tunnel2PublicIP" }, "\n",
+                                    "	type=tunnel\n",
+                                    "	ikelifetime=8h\n",
+                                    "	keylife=1h\n",
+                                    "	phase2alg=aes128-sha1;modp1024\n",
+                                    "	ike=aes128-sha1;modp1024\n",
+                                    "	auth=esp\n",
+                                    "	keyingtries=%forever\n",
+                                    "	keyexchange=ike\n",
+                                    "	leftsubnet=0.0.0.0/0\n",
+                                    "	rightsubnet=", { "Ref": "RemoteVpcCidr" }, "\n",
+                                    "	dpddelay=10\n",
+                                    "	dpdtimeout=30\n",
+                                    "	dpdaction=restart_by_peer\n"
+                                ]]}
+                            }
+                        },
+                        "commands": {
+                            "01-ipsec-conf" : {
+                                "command": "sed -i 's/net.ipv4.ip_forward = 0/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf"
+                            },
+                            "02-ipsec-conf" : {
+                                "command": "sed -i 's/net.ipv4.conf.default.rp_filter = 1/net.ipv4.conf.default.rp_filter = 0/g' /etc/sysctl.conf"
+                            },
+                            "03-ipsec-conf" : {
+                                "command": "sed -i 's/net.ipv4.conf.default.accept_source_route = 1/net.ipv4.conf.default.accept_source_route = 0/g' /etc/sysctl.conf"
+                            },
+                            "04-ipsec-conf" : {
+                                "command": "echo \"include /etc/ipsec.d/*.conf\" >> /etc/ipsec.conf"
+                            },
+                            "05-ipsec-conf" : {
+                                "command": "for f in $(ls -1 /proc/sys/net/ipv4/conf/*/send_redirects); do echo 0 > ${f}; done"
+                            },
+                            "06-ipsec-conf" : {
+                                "command": "for f in $(ls -1 /proc/sys/net/ipv4/conf/*/accept_redirects); do echo 0 > ${f}; done"
+                            },
+                            "07-ipsec-apply-changes" : {
+                                "command": "sysctl -p"
+                            },
+                            "08-health-check-init": {
+                                "command": "/etc/init.d/vpn-health-checker start"
+                            },
+                            "09-health-check-conf": {
+                                "command": {"Fn::Join" : ["",[ 
+                                    "sed -i 's/target_ip_1=127.0.0.1/target_ip_1=", { "Ref": "VpnHealthCheckTargetIp1" }, "/g' /etc/vpn-health-checker/vpn-health-checker.conf"
+                                 ] ]}
+                            },
+                            "10-health-check-conf": {
+                                "command": {"Fn::Join" : ["",[ 
+                                    "sed -i 's/#target_ip_2=127.0.0.1/target_ip_2=", { "Ref": "VpnHealthCheckTargetIp2" }, "/g' /etc/vpn-health-checker/vpn-health-checker.conf"
+                                 ] ]}
+                            },
+                            "11-health-check-conf": {
+                                "command": {"Fn::Join" : ["",[ 
+                                    "sed -i 's/environment_identifier=VpnHA/environment_identifier=", { "Ref": "AWS::StackName" }, "/g' /etc/vpn-health-checker/vpn-health-checker.conf"
+                                 ] ]}
+                            },
+                            "12-health-check-init": {
+                                "command": "/etc/init.d/vpn-health-checker stop && /etc/init.d/vpn-health-checker start"
+                            }
+                        },
+                        "services": {
+                            "sysvinit" :{
+                                "ipsec": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                },
+                                "vpn-health-checker": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+
+            "Properties":{
+                "ImageId": { "Fn::FindInMap" : [ "Region", { "Ref" : "AWS::Region" }, "AmiID" ] },
+                "InstanceType": { "Ref": "InstanceType" },
+                "KeyName": { "Ref": "InstanceKey" },
+                "SecurityGroupIds": [{ "Ref": "VpnSecurityGroup" }],
+                "SubnetId": { "Ref": "InstanceSubnet" },
+                "SourceDestCheck": "false",
+                "IamInstanceProfile" : { "Ref" : "VpnInstanceProfile" },
+                "Tags": [{
+                    "Key": "Environment",
+                    "Value": { "Ref": "Environment" }
+                },{
+                    "Key": "Name",
+                    "Value": { "Ref": "AWS::StackName" }
+                }],
+                "UserData": { "Fn::Base64" : { "Fn::Join" : ["", [
+                    "#!/bin/bash -xe\n",
+                    "yum update -y && yum upgrade -y\n",
+                    "yum install -y aws-cfn-bootstrap\n",
+                    "# Install the files and packages from the metadata\n",
+                    "/opt/aws/bin/cfn-init ",
+                    "         --stack ", { "Ref" : "AWS::StackName" },
+                    "         --resource VpnInstance ",
+                    "         --configsets VpnConfig ",
+                    "         --region ", { "Ref" : "AWS::Region" }, "\n"
+                ]]}}
+            }
+        },
+        "PublicIpAssociation" : {
+            "Type" : "AWS::EC2::EIPAssociation",
+            "Properties" : {
+                "InstanceId" : { "Ref" : "VpnInstance" },
+                "AllocationId" : { "Ref" : "PublicIpAllocId" }
+            }
+        },
+        "VpnClodWatchAlarm": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmName": { "Ref": "AWS::StackName" },
+                "AlarmDescription": {"Fn::Join" : ["",[ "VPN health check dected many erros on ", { "Ref": "AWS::StackName" } ] ]},
+                "MetricName": "VpnHealthCheckErrors",
+                "Namespace": "VPN",
+                "Dimensions" : [{ 
+                    "Name": "VpnName",
+                    "Value": { "Ref": "AWS::StackName" } 
+                }],
+                "Statistic": "Sum",
+                "Period": "300",
+                "EvaluationPeriods": "1",
+                "Threshold": "0",
+                "AlarmActions": [
+                    {"Ref": "SnsAlarmNotificationTopicARN"} 
+                ],
+                "OKActions": [
+                    {"Ref": "SnsAlarmNotificationTopicARN"} 
+                ],
+                "InsufficientDataActions": [
+                    {"Ref": "SnsAlarmNotificationTopicARN"} 
+                ],
+                "ComparisonOperator": "GreaterThanThreshold"
+            }
+        }
+    },
+    "Outputs": {
+
+    }
+}
